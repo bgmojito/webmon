@@ -21,6 +21,64 @@ Puis :
 - Grafana : http://localhost:3000 (admin/admin)
 - Prometheus : http://localhost:9090
 - cAdvisor : http://localhost:8080
+- Alertmanager : http://localhost:9093 (accessible uniquement en local, 127.0.0.1)
+
+## Alerting
+
+La stack ne se contente plus de collecter et d'afficher des métriques : Prometheus évalue
+des règles d'alerte en continu et les transmet à Alertmanager dès qu'elles passent à l'état
+`firing`.
+
+### Règles en place
+
+Définies dans [`prometheus/rules/alerts.yml`](prometheus/rules/alerts.yml), chargées par
+Prometheus via `rule_files:` dans `prometheus.yml` :
+
+| Alerte | Condition | Sévérité |
+|---|---|---|
+| `ServiceDown` | Une cible scrapée (`up == 0`) ne répond plus depuis plus de 2 minutes | critical |
+| `ContainerRestartLoop` | Un conteneur redémarre plus de 2 fois en 15 minutes (`changes(container_start_time_seconds[15m])`) | warning |
+| `HighDiskUsage` | Espace disque disponible sous 15 % sur un point de montage | warning |
+| `HighMemoryUsage` | Mémoire d'un conteneur au-dessus de 85 % de sa limite pendant plus de 5 minutes | warning |
+
+Chaque alerte porte un label `severity` et des annotations `summary` / `description` qui
+incluent le nom de l'instance/du conteneur concerné, pour être immédiatement lisibles dans
+Prometheus et Alertmanager.
+
+> `HighMemoryUsage` se base sur `container_spec_memory_limit_bytes` (exposé par cAdvisor) :
+> elle ne se déclenchera que pour les conteneurs auxquels une limite mémoire (`mem_limit` /
+> `deploy.resources.limits.memory`) a été fixée, sinon le ratio reste proche de 0.
+
+### Alertmanager
+
+Le service `alertmanager` (voir `docker-compose.yml`) lit
+[`alertmanager/alertmanager.yml`](alertmanager/alertmanager.yml) et route toutes les
+alertes vers un receiver webhook local (`webhook-local`), sans aucun identifiant réel —
+à remplacer par un vrai receiver (Slack, email, PagerDuty...) en production. Comme les
+autres ports de supervision, il n'est exposé que sur `127.0.0.1:9093`.
+
+Prometheus est relié à Alertmanager via la section `alerting:` de `prometheus.yml`.
+
+### Tester les alertes
+
+1. Démarrer la stack (`make start`) puis ouvrir http://localhost:9090/rules : les 4 règles
+   doivent apparaître avec l'état `ok` (pas d'erreur de chargement).
+2. Arrêter un conteneur non critique pour simuler une panne, par exemple :
+   ```bash
+   docker stop webmon-cadvisor
+   ```
+3. Sur http://localhost:9090/alerts, l'alerte `ServiceDown` passe d'abord à l'état
+   **Pending** (dès que `up == 0`), puis à **Firing** après 2 minutes (le temps défini par
+   `for:` dans la règle).
+4. Une fois à l'état Firing, l'alerte apparaît dans Alertmanager : http://localhost:9093
+   (onglet "Alerts"), avec ses labels (`severity`, `job`, `instance`) et ses annotations.
+5. Relancer le conteneur (`docker start webmon-cadvisor`) : l'alerte repasse à `inactive`
+   côté Prometheus et se résout côté Alertmanager.
+
+Pour tester `ContainerRestartLoop`, utiliser `make chaos` (ou `scripts/chaos.sh`) plusieurs
+fois de suite en moins de 15 minutes sur un même conteneur applicatif : cAdvisor détecte les
+changements de `container_start_time_seconds` et l'alerte se déclenche une fois le seuil de
+redémarrages dépassé.
 
 `HOST_IP` (défaut `localhost`) contrôle l'hôte affiché dans les URLs ci-dessus et dans `make chaos` ; à surcharger via variable d'environnement, ex. `HOST_IP=192.168.1.10 make start`, ou en la définissant dans `.env` (voir plus bas — le Makefile charge automatiquement `.env` s'il existe).
 

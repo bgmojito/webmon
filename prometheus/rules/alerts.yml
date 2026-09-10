@@ -1,0 +1,38 @@
+groups:
+  - name: webmon-alerts
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} down sur {{ $labels.instance }}"
+          description: "La cible {{ $labels.instance }} (job {{ $labels.job }}) ne répond plus aux scrapes Prometheus depuis plus de 2 minutes."
+
+      - alert: ContainerRestartLoop
+        expr: changes(container_start_time_seconds{name!=""}[15m]) > 2
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Boucle de redémarrage sur {{ $labels.name }}"
+          description: "Le conteneur {{ $labels.name }} sur {{ $labels.instance }} a redémarré {{ $value }} fois au cours des 15 dernières minutes."
+
+      - alert: HighDiskUsage
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Espace disque faible sur {{ $labels.instance }}"
+          description: "Le point de montage {{ $labels.mountpoint }} sur {{ $labels.instance }} n'a plus que {{ $value | printf \"%.1f\" }}% d'espace disque disponible (seuil : 15%)."
+
+      - alert: HighMemoryUsage
+        expr: (container_memory_working_set_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""}) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Mémoire élevée sur {{ $labels.name }}"
+          description: "Le conteneur {{ $labels.name }} sur {{ $labels.instance }} utilise {{ $value | printf \"%.1f\" }}% de sa limite mémoire depuis plus de 5 minutes."
