@@ -4,7 +4,7 @@ export
 HOST_IP ?= localhost
 
 .PHONY: help start stop restart logs ps build clean status \
-        backup restore chaos stress health rebuild
+        backup restore chaos stress health rebuild test-backup
 
 # === Aide par défaut ===
 help:
@@ -24,6 +24,7 @@ help:
 	@echo ""
 	@echo "  make backup        Sauvegarde Postgres"
 	@echo "  make restore       Restaure la dernière sauvegarde"
+	@echo "  make test-backup   Teste le cycle backup/restore complet"
 	@echo "  make chaos         Tue un conteneur au hasard"
 	@echo "  make stress        Génère 30s de charge CPU"
 	@echo ""
@@ -82,6 +83,9 @@ backup:
 
 restore:
 	@bash scripts/restore.sh
+
+test-backup:
+	@bash scripts/test-backup-restore.sh
 
 chaos:
 	@bash scripts/chaos.sh
