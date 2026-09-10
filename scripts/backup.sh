@@ -37,7 +37,8 @@ if [[ $DRY_RUN -eq 1 ]]; then
 fi
 
 # Exécute pg_dump dans le conteneur
-if docker compose exec -T postgres pg_dump -U webmon -d webmon > "$BACKUP_FILE"; then
+# --clean --if-exists : le dump recrée le schéma quel que soit son état de départ
+if docker compose exec -T postgres pg_dump -U webmon -d webmon --clean --if-exists > "$BACKUP_FILE"; then
   SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
   echo -e "${GREEN}✅ Sauvegarde réussie : ${BACKUP_FILE} (${SIZE})${NC}"
 else
@@ -51,3 +52,10 @@ cd backups
 ls -t webmon_*.sql 2>/dev/null | tail -n +11 | xargs -r rm -f
 cd ..
 echo -e "${GREEN}🧹 Anciens backups nettoyés (on garde les 10 plus récents)${NC}"
+
+# Purge les backups de plus de 7 jours (rétention)
+RETENTION_COUNT=$(find backups -maxdepth 1 -name 'webmon_*.sql' -mtime +7 | wc -l | tr -d ' ')
+if [[ "$RETENTION_COUNT" -gt 0 ]]; then
+  find backups -maxdepth 1 -name 'webmon_*.sql' -mtime +7 -delete
+fi
+echo -e "${GREEN}🗑️  Rétention : ${RETENTION_COUNT} backup(s) de plus de 7 jours supprimé(s)${NC}"
