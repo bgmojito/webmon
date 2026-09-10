@@ -9,7 +9,7 @@
 
 ### Ressources minimales
 
-La stack démarre 11 conteneurs (application + supervision). À titre indicatif :
+La stack démarre 13 conteneurs (application + supervision). À titre indicatif :
 
 | Ressource | Minimum | Recommandé |
 |---|---|---|
@@ -27,7 +27,7 @@ Ces chiffres n'incluent pas la charge générée volontairement par `make stress
    cd webmon
    ```
 
-2. **Vérifier les ports libres** (voir tableau ci-dessous) : `80`, `3000`, `9090`, `3100`, `8080`, `9100`, `9187`.
+2. **Vérifier les ports libres** (voir tableau ci-dessous) : `80`, `3000`, `9090`, `9093`, `3100`, `8080`, `9100`, `9187`.
 
 3. **Démarrer la stack :**
    - Linux/macOS :
@@ -52,19 +52,20 @@ Ces chiffres n'incluent pas la charge générée volontairement par `make stress
 
 ## Ports exposés
 
-Tous les ports ci-dessous sont publiés par `docker-compose.yml` sans restriction d'interface (`"<port>:<port>"`, équivalent à `0.0.0.0:<port>`). Sur une machine dont l'interface réseau est routable publiquement, ils sont donc accessibles depuis l'extérieur, pas seulement en local — voir [Modèle de menace](../README.md#modèle-de-menace) dans le README pour le raisonnement derrière ce choix.
+Seul `nginx` (port `80`) est publié sans restriction d'interface (`"80:80"`, équivalent à `0.0.0.0:80`) : c'est le seul service pensé pour être exposé à des utilisateurs finaux. Tous les ports de supervision ci-dessous sont publiés en `127.0.0.1:<port>:<port>` dans `docker-compose.yml`, donc joignables uniquement depuis la machine hôte elle-même, pas depuis l'extérieur — voir [Modèle de menace](../README.md#modèle-de-menace) dans le README pour le raisonnement derrière ce choix.
 
 | Port hôte | Service | Rôle | Accessibilité prévue |
 |---|---|---|---|
-| `80` | `nginx` | Point d'entrée de l'application (reverse proxy vers `frontend` et `backend`) | Publique — c'est le seul service pensé pour être exposé à des utilisateurs finaux |
-| `3000` | `grafana` | Dashboards de supervision (identifiants par défaut `admin`/`admin`) | Locale / admin — exposée par défaut, à restreindre en dehors d'un lab |
-| `9090` | `prometheus` | Interface et API Prometheus (métriques, requêtes PromQL) | Locale / admin — pas d'authentification |
-| `3100` | `loki` | API de requête des logs (consommée par Grafana) | Locale / admin — pas d'authentification |
-| `8080` | `cadvisor` | Métriques et introspection des conteneurs (tourne en `privileged: true`) | Locale / admin — sensible, pas d'authentification |
-| `9100` | `node-exporter` | Métriques système de l'hôte (CPU, RAM, disque) | Locale / admin — pas d'authentification |
-| `9187` | `postgres-exporter` | Métriques Postgres pour Prometheus | Locale / admin — pas d'authentification |
+| `80` | `nginx` | Point d'entrée de l'application (reverse proxy vers `frontend` et `backend`) | Publique (`0.0.0.0`) — c'est le seul service pensé pour être exposé à des utilisateurs finaux |
+| `3000` | `grafana` | Dashboards de supervision (identifiants par défaut `admin`/`admin`) | Locale (`127.0.0.1`) / admin |
+| `9090` | `prometheus` | Interface et API Prometheus (métriques, requêtes PromQL) | Locale (`127.0.0.1`) / admin — pas d'authentification |
+| `9093` | `alertmanager` | Interface et API Alertmanager (alertes actives, silences) | Locale (`127.0.0.1`) / admin — pas d'authentification |
+| `3100` | `loki` | API de requête des logs (consommée par Grafana) | Locale (`127.0.0.1`) / admin — pas d'authentification |
+| `8080` | `cadvisor` | Métriques et introspection des conteneurs (tourne en `privileged: true`) | Locale (`127.0.0.1`) / admin — sensible, pas d'authentification |
+| `9100` | `node-exporter` | Métriques système de l'hôte (CPU, RAM, disque) | Locale (`127.0.0.1`) / admin — pas d'authentification |
+| `9187` | `postgres-exporter` | Métriques Postgres pour Prometheus | Locale (`127.0.0.1`) / admin — pas d'authentification |
 
-Les services `postgres`, `backend`, `frontend` et `promtail` ne publient aucun port sur l'hôte : ils ne sont joignables que depuis le réseau Docker interne (`webmon`).
+Les services `postgres`, `backend`, `frontend`, `promtail` et `docker-socket-proxy` ne publient aucun port sur l'hôte : ils ne sont joignables que depuis le réseau Docker interne (`webmon`).
 
 ## Dépannage
 
@@ -92,4 +93,4 @@ Démarrez la stack (`make start`) avant de lancer une sauvegarde ou une restaura
 Le premier lancement construit les images `backend`, `frontend` et `nginx` et télécharge les images tierces (Postgres, Prometheus, Grafana, Loki, Promtail, cAdvisor, node-exporter, postgres-exporter). Les démarrages suivants réutilisent le cache Docker et sont nettement plus rapides.
 
 **Les données ont disparu après une commande**
-`make clean` / `.\scripts\webmon.ps1 clean` supprime volontairement les volumes Docker (`postgres-data`, `prometheus-data`, `grafana-data`, `loki-data`). C'est le comportement attendu de `clean` ; utilisez `stop` si vous souhaitez seulement arrêter les conteneurs sans perdre les données.
+`make clean` / `.\scripts\webmon.ps1 clean` supprime volontairement les volumes Docker (`postgres-data`, `prometheus-data`, `alertmanager-data`, `grafana-data`, `loki-data`). C'est le comportement attendu de `clean` ; utilisez `stop` si vous souhaitez seulement arrêter les conteneurs sans perdre les données.

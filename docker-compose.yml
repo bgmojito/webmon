@@ -134,14 +134,20 @@ services:
     restart: unless-stopped
 
   docker-socket-proxy:
-    image: tecnativa/docker-socket-proxy:0.5.0
+    image: tecnativa/docker-socket-proxy:v0.5.0
     container_name: webmon-docker-socket-proxy
     environment:
+      # Evite l'échec de bind IPv6 (::2375) sur les hôtes/sandbox sans
+      # support IPv6 au niveau noyau ; cf. docker-entrypoint.sh de l'image.
+      DISABLE_IPV6: "1"
       # Lecture seule, limité aux endpoints nécessaires à la découverte
       # de conteneurs par Promtail (docker_sd_configs).
       CONTAINERS: "1"
       IMAGES: "0"
-      NETWORKS: "0"
+      # Requis (lecture seule) : docker_sd_configs (Promtail) calcule les
+      # labels __meta_docker_network_* via /networks, sans quoi la
+      # découverte échoue en boucle avec "403 Forbidden".
+      NETWORKS: "1"
       VOLUMES: "0"
       BUILD: "0"
       COMMIT: "0"
