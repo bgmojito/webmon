@@ -2952,6 +2952,10 @@
   "templating": {
     "list": [
       {
+        "current": {
+          "value": "prometheus",
+          "text": "Prometheus"
+        },
         "hide": 0,
         "label": "datasource",
         "name": "DS_PROMETHEUS",

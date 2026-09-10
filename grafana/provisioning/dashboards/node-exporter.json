@@ -15450,7 +15450,10 @@
   "templating": {
     "list": [
       {
-        "current": {},
+        "current": {
+          "value": "prometheus",
+          "text": "Prometheus"
+        },
         "includeAll": false,
         "label": "Datasource",
         "name": "ds_prometheus",

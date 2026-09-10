@@ -1,4 +1,4 @@
-HOST_IP := 81.249.188.129
+HOST_IP ?= localhost
 
 .PHONY: help start stop restart logs ps build clean status \
         backup restore chaos stress health rebuild
