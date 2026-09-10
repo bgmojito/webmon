@@ -12,6 +12,7 @@
 ## Démarrage rapide
 
 ```bash
+cp .env.example .env
 make start
 ```
 
@@ -21,7 +22,41 @@ Puis :
 - Prometheus : http://localhost:9090
 - cAdvisor : http://localhost:8080
 
-`HOST_IP` (défaut `localhost`) contrôle l'hôte affiché dans les URLs ci-dessus et dans `make chaos` ; à surcharger via variable d'environnement, ex. `HOST_IP=192.168.1.10 make start`.
+`HOST_IP` (défaut `localhost`) contrôle l'hôte affiché dans les URLs ci-dessus et dans `make chaos` ; à surcharger via variable d'environnement, ex. `HOST_IP=192.168.1.10 make start`, ou en la définissant dans `.env` (voir plus bas — le Makefile charge automatiquement `.env` s'il existe).
+
+## Secrets et configuration
+
+Les identifiants sensibles (`POSTGRES_PASSWORD`, `GF_SECURITY_ADMIN_PASSWORD`,
+`DATA_SOURCE_NAME`) ne sont plus écrits en dur dans `docker-compose.yml`.
+Ils sont lus depuis un fichier `.env` local, non commité (voir
+`.gitignore`). Ce même fichier `.env` peut aussi porter `HOST_IP` (voir
+ci-dessus), pour garder un seul point de configuration.
+
+Procédure :
+
+1. Copier le fichier d'exemple : `cp .env.example .env`
+2. Adapter les valeurs si besoin (mot de passe PostgreSQL, mot de passe
+   admin Grafana, chaîne de connexion `DATA_SOURCE_NAME` — elle doit
+   rester cohérente avec `POSTGRES_PASSWORD` — et éventuellement
+   `HOST_IP`)
+3. Démarrer la stack normalement (`make start` ou
+   `docker compose up -d`) : Docker Compose charge automatiquement
+   `.env` à la racine du projet, et le Makefile fait de même pour
+   `HOST_IP`
+
+`.env.example` contient des valeurs de démo fonctionnelles : la stack
+démarre en une seule commande sans configuration supplémentaire. Ne
+committez jamais votre `.env` local.
+
+## Exposition réseau
+
+Seuls `nginx` (port 80) et l'application sont exposés sur toutes les
+interfaces. Les services de supervision (Prometheus, Grafana, Loki,
+cAdvisor, node-exporter, postgres-exporter) ne publient leurs ports que
+sur `127.0.0.1`, donc uniquement accessibles depuis la machine hôte
+elle-même. La communication inter-conteneurs (scraping Prometheus,
+etc.) continue de passer par le réseau Docker interne `webmon` via les
+noms de service.
 
 ## Documentation
 

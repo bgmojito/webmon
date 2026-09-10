@@ -1,3 +1,6 @@
+-include .env
+export
+
 HOST_IP ?= localhost
 
 .PHONY: help start stop restart logs ps build clean status \
@@ -32,9 +35,9 @@ start:
 	@echo "✅ Stack démarrée"
 	@echo ""
 	@echo "🌐 App          : http://$(HOST_IP)"
-	@echo "📊 Grafana      : http://$(HOST_IP):3000 (admin/admin)"
-	@echo "📈 Prometheus   : http://$(HOST_IP):9090"
-	@echo "📦 cAdvisor     : http://$(HOST_IP):8080"
+	@echo "📊 Grafana      : http://localhost:3000 (accès local uniquement, admin/<mot de passe .env>)"
+	@echo "📈 Prometheus   : http://localhost:9090 (accès local uniquement)"
+	@echo "📦 cAdvisor     : http://localhost:8080 (accès local uniquement)"
 	@echo ""
 
 stop:
@@ -86,4 +89,4 @@ chaos:
 stress:
 	@echo "🔥 Génération de charge CPU pendant 30s..."
 	docker run --rm -d --name webmon-stress --network webmon_webmon polinux/stress stress --cpu 2 --timeout 30s
-	@echo "Observez Grafana : http://$(HOST_IP):3000"
+	@echo "Observez Grafana : http://localhost:3000 (accès local uniquement)"
