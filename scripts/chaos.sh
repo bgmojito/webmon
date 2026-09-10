@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+HOST_IP="${HOST_IP:-localhost}"
+
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -55,7 +57,7 @@ for i in {1..30}; do
     echo -e "${CYAN}📸 État après :${NC}"
     docker ps --filter "name=${VICTIM}" --format "  {{.Names}} : {{.Status}}"
     echo ""
-    echo -e "${CYAN}🔍 Vérifie Grafana pour voir la coupure : http://81.249.188.129:3000${NC}"
+    echo -e "${CYAN}🔍 Vérifie Grafana pour voir la coupure : http://${HOST_IP}:3000${NC}"
     exit 0
   fi
 done

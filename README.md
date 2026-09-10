@@ -21,6 +21,8 @@ Puis :
 - Prometheus : http://localhost:9090
 - cAdvisor : http://localhost:8080
 
+`HOST_IP` (défaut `localhost`) contrôle l'hôte affiché dans les URLs ci-dessus et dans `make chaos` ; à surcharger via variable d'environnement, ex. `HOST_IP=192.168.1.10 make start`.
+
 ## Documentation
 
 Voir [docs/INSTALLATION.md](docs/INSTALLATION.md) pour l''installation complète.
