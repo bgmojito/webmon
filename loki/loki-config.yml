@@ -26,6 +26,7 @@ limits_config:
   retention_period: 168h
 compactor:
   retention_enabled: true
+  delete_request_store: filesystem
   working_directory: /loki/compactor
 ruler:
   alertmanager_url: http://localhost:9093

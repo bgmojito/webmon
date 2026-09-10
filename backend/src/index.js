@@ -32,6 +32,13 @@ app.use((req, res, next) => {
 });
 // === Routes ===
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.post('/webhook/alerts', (req, res) => {
+  const alerts = req.body?.alerts || [];
+  for (const a of alerts) {
+    console.log(`[alertmanager] ${a.status} ${a.labels?.alertname} (${a.labels?.severity}) - ${a.annotations?.summary || ''}`);
+  }
+  res.status(200).json({ received: alerts.length });
+});
 app.get('/metrics', async (req, res) => {
   res.set('Content-Type', register.contentType);
   res.end(await register.metrics());

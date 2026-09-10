@@ -122,7 +122,7 @@ Voir [docs/INSTALLATION.md](docs/INSTALLATION.md) pour l'installation complète.
 
 ## Commandes disponibles
 
-La stack peut être pilotée avec `make` (Linux/macOS) ou avec `scripts/webmon.ps1` (Windows). Les deux couvrent les mêmes cas d'usage sauf `rebuild`, qui n'existe que côté Makefile.
+La stack peut être pilotée avec `make` (Linux/macOS) ou avec `scripts/webmon.ps1` (Windows). Les deux couvrent les mêmes cas d'usage sauf `rebuild` et `test-backup`, qui n'existent que côté Makefile.
 
 | Commande | Action | Linux (`make`) | Windows (`.\scripts\webmon.ps1`) |
 |---|---|---|---|
@@ -139,6 +139,7 @@ La stack peut être pilotée avec `make` (Linux/macOS) ou avec `scripts/webmon.p
 | `clean` | Arrête tout et supprime les volumes (données perdues) | ✅ `make clean` | ✅ `.\scripts\webmon.ps1 clean` |
 | `backup` | Sauvegarde Postgres dans `backups/webmon_<timestamp>.sql` | ✅ `make backup` (`scripts/backup.sh`) | ✅ `.\scripts\webmon.ps1 backup` |
 | `restore` | Restaure la dernière sauvegarde Postgres | ✅ `make restore` (`scripts/restore.sh`) | ✅ `.\scripts\webmon.ps1 restore` |
+| `test-backup` | Déroule le cycle complet backup → purge → restore et vérifie qu'il est idempotent | ✅ `make test-backup` (`scripts/test-backup-restore.sh`) | ❌ pas d'équivalent dans `webmon.ps1` |
 | `chaos` | Tue un conteneur applicatif au hasard (test de résilience) | ✅ `make chaos` (`scripts/chaos.sh`, envoie `kill 1` dans le conteneur) | ✅ `.\scripts\webmon.ps1 chaos` (`docker kill` direct sur le conteneur) |
 | `stress` | Génère 30s de charge CPU via un conteneur `polinux/stress` | ✅ `make stress` | ✅ `.\scripts\webmon.ps1 stress` |
 
@@ -150,10 +151,14 @@ La stack peut être pilotée avec `make` (Linux/macOS) ou avec `scripts/webmon.p
 flowchart LR
     user(["Utilisateur"])
 
-    subgraph pub["Ports publiés sur l'hôte (0.0.0.0) — voir Modèle de menace"]
+    subgraph pub["Port publié sur toutes les interfaces (0.0.0.0)"]
         nginx["nginx :80"]
+    end
+
+    subgraph admin["Ports publiés sur 127.0.0.1 uniquement — accès admin local, voir Modèle de menace"]
         grafana["grafana :3000"]
         prometheus["prometheus :9090"]
+        alertmanager["alertmanager :9093"]
         loki["loki :3100"]
         cadvisor["cadvisor :8080"]
         nodeexp["node-exporter :9100"]
@@ -165,6 +170,7 @@ flowchart LR
         backend["backend :3001"]
         postgres[("postgres :5432")]
         promtail["promtail"]
+        dockerproxy["docker-socket-proxy"]
         dockerlogs["logs des conteneurs<br/>(label logging=promtail)"]
     end
 
@@ -179,40 +185,45 @@ flowchart LR
     frontend -.-> dockerlogs
     postgres -.-> dockerlogs
     dockerlogs --> promtail
+    dockerproxy -. "découverte des conteneurs<br/>(API Docker en lecture seule)" .-> promtail
     promtail -- push --> loki
 
     prometheus -- scrape --> nodeexp
     prometheus -- scrape --> cadvisor
     prometheus -- scrape --> pgexp
     prometheus -- scrape --> backend
+    prometheus -- "alertes firing" --> alertmanager
+    alertmanager -- webhook --> backend
 
     grafana -- query --> prometheus
     grafana -- query --> loki
 
-    user -. "accès admin, non prévu pour le public" .-> grafana
-    user -. "accès admin, non prévu pour le public" .-> prometheus
-    user -. "accès admin, non prévu pour le public" .-> cadvisor
+    user -. "accès admin local uniquement (127.0.0.1)" .-> grafana
+    user -. "accès admin local uniquement (127.0.0.1)" .-> prometheus
+    user -. "accès admin local uniquement (127.0.0.1)" .-> alertmanager
+    user -. "accès admin local uniquement (127.0.0.1)" .-> cadvisor
 ```
 
 - **Collecte de métriques :** `prometheus` scrape `node-exporter` (métriques hôte), `cadvisor` (métriques conteneurs), `postgres-exporter` (métriques base de données) et `backend` (métriques applicatives).
-- **Collecte de logs :** `promtail` lit les logs Docker des conteneurs portant le label `logging=promtail` (`nginx`, `frontend`, `backend`, `postgres`) et les pousse vers `loki`.
+- **Alerting :** `prometheus` évalue les règles de [`prometheus/rules/alerts.yml`](prometheus/rules/alerts.yml) et transmet les alertes `firing` à `alertmanager`, qui les route vers un webhook local sur `backend` (voir [Alerting](#alerting) ci-dessus).
+- **Collecte de logs :** `promtail` découvre les conteneurs portant le label `logging=promtail` (`nginx`, `frontend`, `backend`, `postgres`) via `docker-socket-proxy` (accès en lecture seule à l'API Docker, sans passer par le socket brut), lit leurs logs et les pousse vers `loki`.
 - **Visualisation :** `grafana` interroge `prometheus` et `loki` comme sources de données.
-- **Exposition externe :** seul `nginx` (port `80`) est pensé comme point d'entrée public de l'application. Les autres ports publiés (`3000`, `9090`, `3100`, `8080`, `9100`, `9187`) donnent un accès administrateur sans authentification forte — voir la section suivante.
+- **Exposition externe :** seul `nginx` (port `80`) est pensé comme point d'entrée public de l'application. Les autres ports publiés (`3000`, `9090`, `9093`, `3100`, `8080`, `9100`, `9187`) sont restreints à `127.0.0.1` mais restent sans authentification forte — voir la section suivante.
 
 ## Modèle de menace
 
 Ce dépôt est un TP DevOps pensé pour tourner sur une machine de lab (poste local ou VM dédiée), pas pour un déploiement en production. Certains choix qui ressembleraient à des failles de sécurité dans un contexte réel sont **volontaires et documentés**, pas des oublis :
 
-- **Identifiants de démonstration en clair** dans `docker-compose.yml` (Postgres `webmon`/`webmon_pwd`, Grafana `admin`/`admin`). Justification détaillée dans [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) : périmètre local, valeurs connues de toute l'équipe, sans secret réel à protéger.
-- **Tous les ports de supervision sont publiés sur l'hôte** (`0.0.0.0`, voir le tableau des ports dans [docs/INSTALLATION.md](docs/INSTALLATION.md)) plutôt que restreints à `127.0.0.1`. Le Makefile pointe d'ailleurs vers une IP publique de démonstration pour que l'équipe et les correcteurs puissent accéder à Grafana/Prometheus/cAdvisor à distance sans VPN ni tunnel SSH.
-- **Aucune authentification** devant Prometheus, Loki, cAdvisor ou node-exporter : n'importe qui atteignant ces ports peut lire les métriques et les logs. Accepté ici car l'objectif est la démonstration de la stack de supervision elle-même, pas la protection de données sensibles.
+- **Identifiants de démonstration** pour Postgres (`webmon`/`webmon_pwd`) et Grafana (`admin`/`admin`), définis via `.env` (voir [Secrets et configuration](#secrets-et-configuration) ci-dessus) plutôt que réellement secrets : périmètre local, valeurs connues de toute l'équipe, sans secret réel à protéger.
+- **Les ports de supervision sont restreints à `127.0.0.1`** (voir le tableau des ports dans [docs/INSTALLATION.md](docs/INSTALLATION.md)) : seul `nginx` (`80`) est publié sans restriction d'interface. Une équipe qui a besoin d'un accès distant à Grafana/Prometheus/cAdvisor sans VPN ni tunnel SSH doit explicitement rouvrir ces ports dans `docker-compose.yml`, en connaissance des risques ci-dessous.
+- **Aucune authentification** devant Prometheus, Alertmanager, Loki, cAdvisor ou node-exporter : n'importe qui atteignant ces ports peut lire les métriques et les logs. Accepté ici car l'objectif est la démonstration de la stack de supervision elle-même, pas la protection de données sensibles ; la restriction à `127.0.0.1` limite ce risque au périmètre de la machine hôte.
 - **`cadvisor` tourne en `privileged: true`** avec accès à `/var/run/docker.sock`, `/sys`, `/var/lib/docker` : nécessaire pour qu'il introspecte les autres conteneurs, mais cela lui donne un accès très large à l'hôte s'il était compromis.
 - **Pas de TLS** : `nginx` sert en HTTP simple, acceptable sur un réseau de lab de confiance.
 
 ### Ce qui devrait changer pour un déploiement réel
 
-- Remplacer les identifiants en dur par des variables d'environnement (fichier `.env` non commité) ou un gestionnaire de secrets (Vault, AWS Secrets Manager, Docker Secrets), comme déjà anticipé dans [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md).
-- Ne publier que le strict nécessaire (`80`/`443` pour `nginx`) et binder les autres ports sur `127.0.0.1` ou les retirer du `docker-compose.yml`, en les rendant accessibles uniquement via VPN/tunnel SSH ou un réseau privé.
+- Remplacer les identifiants de démo par un vrai gestionnaire de secrets (Vault, AWS Secrets Manager, Docker Secrets) plutôt qu'un `.env` local en clair.
+- Ne publier que le strict nécessaire (`80`/`443` pour `nginx`) ; les autres ports sont déjà restreints à `127.0.0.1`, mais pourraient être retirés du `docker-compose.yml` et rendus accessibles uniquement via VPN/tunnel SSH ou un réseau privé.
 - Ajouter TLS (certificats Let's Encrypt ou équivalent) devant `nginx`.
 - Mettre une authentification (reverse proxy + SSO, ou au minimum un mot de passe fort et unique) devant Grafana, Prometheus, Loki et cAdvisor si ces interfaces doivent rester accessibles à distance.
 - Éviter `privileged: true` pour `cadvisor` quand c'est possible, ou au minimum isoler le service sur un réseau/segment dédié.
