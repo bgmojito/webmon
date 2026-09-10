@@ -71,6 +71,7 @@ services:
     container_name: webmon-prometheus
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -79,6 +80,23 @@ services:
       - '--web.enable-lifecycle'
     ports:
       - "127.0.0.1:9090:9090"
+    depends_on:
+      - alertmanager
+    networks:
+      - webmon
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: webmon-alertmanager
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - "127.0.0.1:9093:9093"
     networks:
       - webmon
     restart: unless-stopped
@@ -217,5 +235,6 @@ networks:
 volumes:
   postgres-data:
   prometheus-data:
+  alertmanager-data:
   grafana-data:
   loki-data:
